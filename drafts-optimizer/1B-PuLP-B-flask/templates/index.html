@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimizer</title>
+</head>
+<body>
+    <h1>Variable Input and Optimization</h1>
+
+    <!-- Form to add variables -->
+    <form method="POST">
+        <label for="name">Variable Name:</label>
+        <input type="text" name="name" required><br><br>
+
+        <label for="lower_bound">Lower Bound:</label>
+        <input type="number" name="lower_bound"><br><br>
+
+        <label for="upper_bound">Upper Bound:</label>
+        <input type="number" name="upper_bound"><br><br>
+
+        <label for="profit">Profit per Cake:</label>
+        <input type="number" name="profit" step="0.01" required><br><br>
+
+        <label for="integer">Is Integer?</label>
+        <input type="checkbox" name="integer" checked><br><br>
+
+        <label for="multiplier">Multiplier:</label>
+        <input type="number" name="multiplier" required><br><br>
+
+        <button type="submit" name="add_variable">Add Variable</button>
+    </form>
+
+    <!-- Display current variables -->
+    <h2>Current Variables</h2>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Lower Bound</th>
+                <th>Upper Bound</th>
+                <th>Profit</th>
+                <th>Integer</th>
+                <th>Multiplier</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for var in variables %}
+            <tr>
+                <td>{{ var.name }}</td>
+                <td>{{ var.lowerBound }}</td>
+                <td>{{ var.upperBound }}</td>
+                <td>{{ var.profit }}</td>
+                <td>{{ var.integer }}</td>
+                <td>{{ var.multiplier }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Button to trigger optimization -->
+    <form method="POST">
+        <button type="submit" name="optimize">Optimize</button>
+    </form>
+
+    {% if max_profit %}
+    <!-- Display the result if available -->
+    <h2>Optimization Result</h2>
+    <p><strong>Maximum Profit:</strong> £{{ max_profit }}</p>
+
+    <h3>Optimal Variables</h3>
+    <ul>
+        {% for name, value in result.items() %}
+        <li>{{ name }}: {{ value }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</body>
+</html>

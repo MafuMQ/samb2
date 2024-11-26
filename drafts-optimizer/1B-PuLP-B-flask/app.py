@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, flash
 from pulp import LpProblem, LpVariable, LpMaximize, lpSum, PULP_CBC_CMD
+import webbrowser
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Secret key for flashing messages
@@ -87,4 +88,7 @@ def index():
     return render_template("index.html", variables=variables_list, max_profit=max_profit, result=result)
 
 if __name__ == "__main__":
+    url = "http://localhost:5000"
+    webbrowser.open(url)
     app.run(debug=True)
+

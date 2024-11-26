@@ -83,6 +83,7 @@ def optimize(variables: list[IntegerVariable]):
 create_integer_variable(name="coffee cake", lowerBound=0, upperBound=None, profit=1.80, multiplier=8)  # Coffee walnut cakes
 create_integer_variable(name="chocolate cake", lowerBound=0, upperBound=None, profit=1.60, multiplier=1)  # Chocolate chip cakes
 
+
 # Call optimize with the list of IntegerVariable instances
 optimize(variables_list)    
 

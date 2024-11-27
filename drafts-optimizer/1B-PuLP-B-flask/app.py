@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, flash
+import json
+from flask import Flask, render_template, request, flash, redirect, url_for
 from pulp import LpProblem, LpVariable, LpMaximize, lpSum, PULP_CBC_CMD
 import webbrowser
 
@@ -8,7 +9,7 @@ app.secret_key = 'your_secret_key'  # Secret key for flashing messages
 # List to store the IntegerVariable instances
 variables_list = []
 
-# IntegerVariable class as before
+# IntegerVariable class
 class IntegerVariable:
     def __init__(self, name: str, lowerBound: int = 0, upperBound: int = None, profit: float = 0.0, integer: bool = True, multiplier: int = 1):
         self.name = name
@@ -22,6 +23,48 @@ class IntegerVariable:
         return (f"IntegerVariable(name={self.name}, lowerBound={self.lowerBound}, "
                 f"upperBound={self.upperBound}, profit={self.profit}, integer={self.integer}, "
                 f"multiplier={self.multiplier})")
+
+    def to_dict(self):
+        """Convert to a dictionary for JSON export."""
+        return {
+            "name": self.name,
+            "lowerBound": self.lowerBound,
+            "upperBound": self.upperBound,
+            "profit": self.profit,
+            "integer": self.integer,
+            "multiplier": self.multiplier,
+        }
+
+    @staticmethod
+    def from_dict(data):
+        """Create an IntegerVariable from a dictionary."""
+        return IntegerVariable(
+            name=data["name"],
+            lowerBound=data["lowerBound"],
+            upperBound=data["upperBound"],
+            profit=data["profit"],
+            integer=data["integer"],
+            multiplier=data["multiplier"],
+        )
+
+# Export variables to a JSON file
+def export_variables(filename="variables.json"):
+    with open(filename, "w") as f:
+        json.dump([var.to_dict() for var in variables_list], f, indent=4)
+    flash(f"Variables exported to {filename}!", "success")
+
+# Import variables from a JSON file
+def import_variables(filename="variables.json"):
+    global variables_list
+    try:
+        with open(filename, "r") as f:
+            data = json.load(f)
+            variables_list = [IntegerVariable.from_dict(item) for item in data]
+        flash(f"Variables imported from {filename}!", "success")
+    except FileNotFoundError:
+        flash(f"File {filename} not found.", "error")
+    except json.JSONDecodeError:
+        flash("Error decoding JSON file.", "error")
 
 # Function to create an IntegerVariable instance and add it to the list
 def create_integer_variable(name: str, lowerBound: int, upperBound: int, profit: float, integer: bool = True, multiplier: int = 1):
@@ -54,7 +97,6 @@ def optimize(variables):
     for var in variables:
         optimal_value = lp_vars[var.name].varValue
         if optimal_value is None:
-            flash(f"No solution for {var.name}.", "error")
             optimal_value = 0
         else:
             optimal_value = int(optimal_value)
@@ -62,10 +104,9 @@ def optimize(variables):
         result[var.name] = scaled_value
         max_profit += var.profit * scaled_value
 
-
     return max_profit, result
 
-# Combined route for both input and results
+# Combined route for input, optimization, import, and export
 @app.route("/", methods=["GET", "POST"])
 def index():
     max_profit = None
@@ -91,15 +132,17 @@ def index():
             else:
                 flash("No variables to optimize. Add variables first.", "error")
 
+        elif "export" in request.form:
+            # Export variables to a file
+            export_variables()
+
+        elif "import" in request.form:
+            # Import variables from a file
+            import_variables()
+
     return render_template("index.html", variables=variables_list, max_profit=max_profit, result=result)
-
-@app.route("/debug")
-def debug():
-    return str(variables_list)
-
 
 if __name__ == "__main__":
     url = "http://localhost:5000"
     webbrowser.open(url)
     app.run(debug=True)
-

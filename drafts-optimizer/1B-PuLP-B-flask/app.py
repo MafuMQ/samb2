@@ -10,7 +10,7 @@ variables_list = []
 
 # IntegerVariable class as before
 class IntegerVariable:
-    def __init__(self, name: str, lowerBound: int, upperBound: int, profit: float, integer: bool = True, multiplier: int = 1):
+    def __init__(self, name: str, lowerBound: int = 0, upperBound: int = None, profit: float = 0.0, integer: bool = True, multiplier: int = 1):
         self.name = name
         self.lowerBound = lowerBound
         self.upperBound = upperBound
@@ -52,10 +52,16 @@ def optimize(variables):
     max_profit = 0
     result = {}
     for var in variables:
-        optimal_value = int(lp_vars[var.name].varValue)
+        optimal_value = lp_vars[var.name].varValue
+        if optimal_value is None:
+            flash(f"No solution for {var.name}.", "error")
+            optimal_value = 0
+        else:
+            optimal_value = int(optimal_value)
         scaled_value = optimal_value * var.multiplier
         result[var.name] = scaled_value
         max_profit += var.profit * scaled_value
+
 
     return max_profit, result
 
@@ -69,7 +75,7 @@ def index():
         if "add_variable" in request.form:
             # Get the values from the form and create integer variables
             name = request.form["name"]
-            lower_bound = int(request.form["lower_bound"]) if request.form["lower_bound"] else None
+            lower_bound = int(request.form["lower_bound"]) if request.form["lower_bound"] else 0
             upper_bound = int(request.form["upper_bound"]) if request.form["upper_bound"] else None
             profit = float(request.form["profit"])
             integer = bool(request.form.get("integer"))
@@ -86,6 +92,11 @@ def index():
                 flash("No variables to optimize. Add variables first.", "error")
 
     return render_template("index.html", variables=variables_list, max_profit=max_profit, result=result)
+
+@app.route("/debug")
+def debug():
+    return str(variables_list)
+
 
 if __name__ == "__main__":
     url = "http://localhost:5000"

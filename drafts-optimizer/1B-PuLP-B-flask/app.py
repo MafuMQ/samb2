@@ -1,10 +1,19 @@
+import os
 import json
-from flask import Flask, render_template, request, flash, redirect, url_for
+from flask import Flask, render_template, request, flash, redirect, url_for, send_file
+from werkzeug.utils import secure_filename
 from pulp import LpProblem, LpVariable, LpMaximize, lpSum, PULP_CBC_CMD
 import webbrowser
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Secret key for flashing messages
+app.secret_key = 'your_secret_key'
+
+UPLOAD_FOLDER = 'uploads'
+EXPORT_FOLDER = 'exports'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(EXPORT_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['EXPORT_FOLDER'] = EXPORT_FOLDER
 
 # List to store the IntegerVariable instances
 variables_list = []
@@ -47,25 +56,6 @@ class IntegerVariable:
             multiplier=data["multiplier"],
         )
 
-# Export variables to a JSON file
-def export_variables(filename="variables.json"):
-    with open(filename, "w") as f:
-        json.dump([var.to_dict() for var in variables_list], f, indent=4)
-    flash(f"Variables exported to {filename}!", "success")
-
-# Import variables from a JSON file
-def import_variables(filename="variables.json"):
-    global variables_list
-    try:
-        with open(filename, "r") as f:
-            data = json.load(f)
-            variables_list = [IntegerVariable.from_dict(item) for item in data]
-        flash(f"Variables imported from {filename}!", "success")
-    except FileNotFoundError:
-        flash(f"File {filename} not found.", "error")
-    except json.JSONDecodeError:
-        flash("Error decoding JSON file.", "error")
-
 # Function to create an IntegerVariable instance and add it to the list
 def create_integer_variable(name: str, lowerBound: int, upperBound: int, profit: float, integer: bool = True, multiplier: int = 1):
     var = IntegerVariable(name=name, lowerBound=lowerBound, upperBound=upperBound, profit=profit, integer=integer, multiplier=multiplier)
@@ -106,7 +96,7 @@ def optimize(variables):
 
     return max_profit, result
 
-# Combined route for input, optimization, import, and export
+# Routes
 @app.route("/", methods=["GET", "POST"])
 def index():
     max_profit = None
@@ -114,7 +104,6 @@ def index():
 
     if request.method == "POST":
         if "add_variable" in request.form:
-            # Get the values from the form and create integer variables
             name = request.form["name"]
             lower_bound = int(request.form["lower_bound"]) if request.form["lower_bound"] else 0
             upper_bound = int(request.form["upper_bound"]) if request.form["upper_bound"] else None
@@ -126,21 +115,56 @@ def index():
             flash("Variable added successfully!", "success")
         
         elif "optimize" in request.form:
-            # Perform the optimization when the button is clicked
             if variables_list:
                 max_profit, result = optimize(variables_list)
             else:
                 flash("No variables to optimize. Add variables first.", "error")
 
-        elif "export" in request.form:
-            # Export variables to a file
-            export_variables()
-
-        elif "import" in request.form:
-            # Import variables from a file
-            import_variables()
-
     return render_template("index.html", variables=variables_list, max_profit=max_profit, result=result)
+
+@app.route("/export", methods=["POST"])
+def export_variables():
+    filename = request.form.get("filename", "variables.json")
+    filepath = os.path.join(app.config['EXPORT_FOLDER'], secure_filename(filename))
+    with open(filepath, "w") as f:
+        json.dump([var.to_dict() for var in variables_list], f, indent=4)
+    flash(f"Variables exported to {filepath}!", "success")
+    return redirect(url_for("index"))
+
+@app.route("/import", methods=["POST"])
+def import_variables():
+    if "file" not in request.files:
+        flash("No file selected for importing.", "error")
+        return redirect(url_for("index"))
+
+    file = request.files["file"]
+    if file.filename == "":
+        flash("No file selected for importing.", "error")
+        return redirect(url_for("index"))
+
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+    file.save(filepath)
+
+    global variables_list
+    try:
+        with open(filepath, "r") as f:
+            data = json.load(f)
+            variables_list = [IntegerVariable.from_dict(item) for item in data]
+        flash(f"Variables imported from {file.filename}!", "success")
+    except Exception as e:
+        flash(f"Error importing variables: {e}", "error")
+
+    return redirect(url_for("index"))
+
+@app.route("/download", methods=["GET"])
+def download_variables():
+    """Export variables as a downloadable JSON file."""
+    filename = "variables.json"
+    filepath = os.path.join(app.config['EXPORT_FOLDER'], filename)
+    with open(filepath, "w") as f:
+        json.dump([var.to_dict() for var in variables_list], f, indent=4)
+    return send_file(filepath, as_attachment=True, download_name=filename)
+
 
 if __name__ == "__main__":
     url = "http://localhost:5000"

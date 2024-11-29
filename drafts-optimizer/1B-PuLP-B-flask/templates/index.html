@@ -12,11 +12,13 @@
     <form method="post" action="/export">
         <label for="filename">Export Filename:</label>
         <input type="text" id="filename" name="filename" value="variables.json" required>
-        <button type="submit" class="btn btn-primary">Export Variables</button>
+        <button type="submit" class="btn btn-primary">Download Variables To Root</button>
     </form>
     
-    <form method="get" action="/download">
-        <button type="submit" class="btn btn-primary">Export Variables</button>
+    <form method="POST" action="/download">
+        <label for="filename">Download Filename:</label>
+        <input type="text" id="filename" name="filename" value="variables.json" required>
+        <button type="submit" class="btn btn-primary">Download Variables</button>
     </form>
     
     <form method="post" action="/import" enctype="multipart/form-data">
@@ -75,7 +77,17 @@
         </tbody>
     </table>
 
+    <!-- adjust budget form -->
+    <h2>Current Conatrains</h2>
+    <form method="POST">
+        <label for="budget">Budget (sum of all variables not larger than):</label>
+        <input type="number" name="budget" id="budget" value="{{ budget }}" min="0" required>
+        <button type="submit" name="update_budget">Update Budget</button>
+    </form>
+    
+    
     <!-- Button to trigger optimization -->
+    <h2>Optimization</h2>
     <form method="POST">
         <button type="submit" name="optimize">Optimize</button>
     </form>

@@ -15,6 +15,7 @@ os.makedirs(EXPORT_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['EXPORT_FOLDER'] = EXPORT_FOLDER
 
+budget = 97
 # List to store the IntegerVariable instances
 variables_list = []
 
@@ -70,8 +71,8 @@ def optimize(variables):
         lp_vars[var.name] = LpVariable(var.name, lowBound=var.lowerBound, upBound=var.upperBound, cat='Integer' if var.integer else 'Continuous')
     
     # Constraints of available pounds sterlings (GBP) with multiplier applied
-    budget_constraint = lpSum([var.multiplier * lp_vars[var.name] for var in variables])
-    model += (budget_constraint <= 13, "Budget_Constraint")  # £13 limit
+    sumOfAllVariables = lpSum([var.multiplier * lp_vars[var.name] for var in variables])
+    model += (sumOfAllVariables <= budget, "Budget_Constraint")  # £13 limit
     
     # Define the objective (maximize profit)
     total_profit = lpSum([var.profit * var.multiplier * lp_vars[var.name] for var in variables])
@@ -99,11 +100,19 @@ def optimize(variables):
 # Routes
 @app.route("/", methods=["GET", "POST"])
 def index():
+    global budget
     max_profit = None
     result = {}
 
     if request.method == "POST":
-        if "add_variable" in request.form:
+        if "update_budget" in request.form:
+            try:
+                budget = int(request.form["budget"])
+                flash("Budget updated successfully!", "success")
+            except ValueError:
+                flash("Invalid budget value. Please enter a valid number.", "error")
+        
+        elif "add_variable" in request.form:
             name = request.form["name"]
             lower_bound = int(request.form["lower_bound"]) if request.form["lower_bound"] else 0
             upper_bound = int(request.form["upper_bound"]) if request.form["upper_bound"] else None
@@ -120,7 +129,8 @@ def index():
             else:
                 flash("No variables to optimize. Add variables first.", "error")
 
-    return render_template("index.html", variables=variables_list, max_profit=max_profit, result=result)
+    return render_template("index.html", variables=variables_list, max_profit=max_profit, result=result, budget=budget)
+
 
 @app.route("/export", methods=["POST"])
 def export_variables():
@@ -156,14 +166,20 @@ def import_variables():
 
     return redirect(url_for("index"))
 
-@app.route("/download", methods=["GET"])
+@app.route("/download", methods=["POST"])
 def download_variables():
-    """Export variables as a downloadable JSON file."""
-    filename = "variables.json"
-    filepath = os.path.join(app.config['EXPORT_FOLDER'], filename)
+    """Export variables as a downloadable JSON file with a specified filename."""
+    filename = request.form.get("filename", "variables.json").strip()  # Get filename from form input
+    if not filename.endswith(".json"):
+        filename += ".json"  # Ensure the filename has a .json extension
+
+    filepath = os.path.join(app.config['EXPORT_FOLDER'], secure_filename(filename))
     with open(filepath, "w") as f:
         json.dump([var.to_dict() for var in variables_list], f, indent=4)
+
+    flash(f"Variables saved as {filename}!", "success")
     return send_file(filepath, as_attachment=True, download_name=filename)
+
 
 
 if __name__ == "__main__":

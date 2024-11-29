@@ -1,5 +1,7 @@
 import os
 import json
+import threading
+import time
 from flask import Flask, render_template, request, flash, redirect, url_for, send_file
 from werkzeug.utils import secure_filename
 from pulp import LpProblem, LpVariable, LpMaximize, lpSum, PULP_CBC_CMD
@@ -184,5 +186,9 @@ def download_variables():
 
 if __name__ == "__main__":
     url = "http://localhost:5000"
-    webbrowser.open(url)
-    app.run(debug=True)
+    def open_browser():
+        time.sleep(1)
+        webbrowser.open(url)
+
+    threading.Thread(target=open_browser).start()
+    app.run(debug=True, use_reloader=False) #prevents opening 2 tabs on start, disables automatic refreshing/restarting when changes are made to code

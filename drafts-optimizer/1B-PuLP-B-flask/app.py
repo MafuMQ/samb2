@@ -182,8 +182,6 @@ def download_variables():
     flash(f"Variables saved as {filename}!", "success")
     return send_file(filepath, as_attachment=True, download_name=filename)
 
-
-
 if __name__ == "__main__":
     url = "http://localhost:5000"
     def open_browser():

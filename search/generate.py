@@ -2,6 +2,12 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from collections import deque
 
+"""
+sudo apt-get install graphiz
+sudo apt-get install libgraphviz-dev
+pip install pygraphviz
+"""
+
 # Investment handler function
 def investmentHandler(current_productivity, current_savings, percentage):
     percentage = percentage / 100
@@ -96,7 +102,7 @@ def get_node_labels_from_tree(node):
     return labels
 
 # Create the tree using BFS
-num_levels = 3
+num_levels = 5
 step = 100
 tree_root = create_tree_bfs("Root", num_levels,step)
 

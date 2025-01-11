@@ -11,8 +11,8 @@ chocolate_cake = {"name":"chocolate cake", "lowerBound":0, "upperBound":None, "p
 ListofVar.append(chocolate_cake)
 
 
-def nr1(Lv = ListofVar):
+def addVariablesToModel(Lv = ListofVar):
     dictList2Var(Lv)
 
-def main(B):
-    return optimizeCall(B)
+def LP_optimizeCall(Budget, Show = False):
+    return optimizeCall(Budget, Show)

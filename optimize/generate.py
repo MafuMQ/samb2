@@ -1,6 +1,6 @@
 from collections import deque
-from testLPapi import nr1, main
-nr1()
+from LP_Interface import addVariablesToModel, LP_optimizeCall
+addVariablesToModel()
 
 """
 
@@ -17,7 +17,7 @@ def investmentHandler(current_productivity, current_savings, percentage):
     investmentAllocation = current_savings*percentage
 
     #replace 0.2 with function call to optimizer, with 'investmentAllocation' as parameter for budget constraint
-    investmentReturn = main(B=investmentAllocation)
+    investmentReturn = LP_optimizeCall(Budget=investmentAllocation)
 
     newProductivity = current_productivity
     newProductivity += investmentReturn #only 20 percent of investment amount is added to productivity
@@ -148,7 +148,7 @@ def display_highest_nodes(root):
     print(f"Investment %: {highest_sum['node'].generationPercentage}%")
 
 # Create the tree using BFS
-num_levels = 2
+num_levels = 5
 step = 100
 tree_root = create_tree_bfs("R", num_levels,step)
 

@@ -44,7 +44,7 @@ variables_list = []
 def create_integer_variable(name: str, lowerBound: int, upperBound: int, profit: float, integer: bool = True, multiplier: int = 1):
     var = IntegerVariable(name=name, lowerBound=lowerBound, upperBound=upperBound, profit=profit, integer=integer, multiplier=multiplier)
     variables_list.append(var)
-    print(f"Added variable: {var}")
+    #print(f"Added variable: {var}")
 
 
 def optimize(variables: list[IntegerVariable], Budget, msgShow = False, EachVariableShow = True):
@@ -68,7 +68,8 @@ def optimize(variables: list[IntegerVariable], Budget, msgShow = False, EachVari
     
     # Print results for each variable
     max_profit = 0
-    print("\n")
+    if EachVariableShow:
+        print("\n")
 
     for var in variables:
         optimal_value = int(lp_vars[var.name].varValue)
@@ -78,22 +79,21 @@ def optimize(variables: list[IntegerVariable], Budget, msgShow = False, EachVari
         max_profit += var.profit * scaled_value
     
     # Print total maximum profit
-    print(f'Maximum profit: £{max_profit:.2f}')
+    if EachVariableShow:
+        print(f'Maximum profit: £{max_profit:.2f}')
     
-    #@A pull variables_list from global and reset it, TO:DO, variables are added once to save energy
-    global variables_list
-    #variables_list = []
 
     return float(f'{max_profit:.2f}')
 
 def dictList2Var(dictList):
+    # Clear IntegerVariable instances,TO:DO variables are added once to save energy
+    global variables_list
+    variables_list.clear()
 
     # Create IntegerVariable instances and add them to the list
     for i in dictList:
         create_integer_variable(name=i["name"], lowerBound=i["lowerBound"], upperBound=i["upperBound"], profit=i["profit"], multiplier=i["multiplier"])
 
-    #@A print(variables_list)
+def optimizeCall(Budget, Show):
     # Call optimize with the list of IntegerVariable instances
-
-def optimizeCall(Budget):
-    return optimize(variables_list, Budget)    
+    return optimize(variables_list, Budget, EachVariableShow = Show)    

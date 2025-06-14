@@ -1,3 +1,25 @@
+"""
+1B-PuLP-B-flask/app.py
+
+A Flask web application for defining and solving integer linear programming problems (e.g., maximizing profit for cake production under a budget constraint).
+
+Features:
+- Add, import, export, and download optimization variables (e.g., cakes).
+- Set a budget constraint and maximize profit using PuLP.
+- Web interface for user interaction.
+
+Classes:
+    IntegerVariable: Represents a variable in the optimization problem.
+
+Functions:
+    create_integer_variable: Helper to create and store IntegerVariable instances.
+    optimize: Sets up and solves the optimization problem using PuLP.
+    Flask routes: index, export_variables, import_variables, download_variables.
+
+@author: Mafu
+@date: 2024-10-11
+"""
+
 import os
 import json
 import threading
@@ -23,7 +45,18 @@ variables_list = []
 
 # IntegerVariable class
 class IntegerVariable:
-    def __init__(self, name: str, lowerBound: int = 0, upperBound: int = None, profit: float = 0.0, integer: bool = True, multiplier: int = 1):
+    """
+    Represents an integer (or continuous) variable for optimization.
+
+    Attributes:
+        name (str): Name of the variable.
+        lowerBound (int): Minimum value.
+        upperBound (int or None): Maximum value (None for unbounded above).
+        profit (float): Profit per unit.
+        integer (bool): Whether the variable is integer (default True).
+        multiplier (int): Multiplier for scaling (e.g., batch size).
+    """
+    def __init__(self, name: str, lowerBound: int = 0, upperBound: int | None = None, profit: float = 0.0, integer: bool = True, multiplier: int = 1):
         self.name = name
         self.lowerBound = lowerBound
         self.upperBound = upperBound
@@ -60,21 +93,44 @@ class IntegerVariable:
         )
 
 # Function to create an IntegerVariable instance and add it to the list
-def create_integer_variable(name: str, lowerBound: int, upperBound: int, profit: float, integer: bool = True, multiplier: int = 1):
+
+def create_integer_variable(name: str, lowerBound: int, upperBound: int | None, profit: float, integer: bool = True, multiplier: int = 1):
+    """
+    Create an IntegerVariable and add it to the global variables_list.
+
+    Args:
+        name (str): Name of the variable.
+        lowerBound (int): Minimum value.
+        upperBound (int or None): Maximum value.
+        profit (float): Profit per unit.
+        integer (bool): Whether variable is integer.
+        multiplier (int): Multiplier for scaling.
+    """
     var = IntegerVariable(name=name, lowerBound=lowerBound, upperBound=upperBound, profit=profit, integer=integer, multiplier=multiplier)
     variables_list.append(var)
 
 # Optimize function to process variables in the list
+
 def optimize(variables):
+    """
+    Set up and solve the integer programming problem to maximize profit.
+
+    Args:
+        variables (list[IntegerVariable]): List of variables to optimize.
+    Returns:
+        max_profit (float): The maximum profit achieved.
+        result (dict): Dictionary of variable names and their optimal scaled values.
+    """
     model = LpProblem("Cake_Production", LpMaximize)
     lp_vars = {}
 
+    # Create PuLP variables for each IntegerVariable
     for var in variables:
         lp_vars[var.name] = LpVariable(var.name, lowBound=var.lowerBound, upBound=var.upperBound, cat='Integer' if var.integer else 'Continuous')
     
     # Constraints of available pounds sterlings (GBP) with multiplier applied
     sumOfAllVariables = lpSum([var.multiplier * lp_vars[var.name] for var in variables])
-    model += (sumOfAllVariables <= budget, "Budget_Constraint")  # £13 limit
+    model += (sumOfAllVariables <= budget, "Budget_Constraint")  # Budget limit
     
     # Define the objective (maximize profit)
     total_profit = lpSum([var.profit * var.multiplier * lp_vars[var.name] for var in variables])
@@ -102,6 +158,10 @@ def optimize(variables):
 # Routes
 @app.route("/", methods=["GET", "POST"])
 def index():
+    """
+    Main page for adding variables, updating budget, and running optimization.
+    Handles form submissions for all main actions.
+    """
     global budget
     max_profit = None
     result = {}
@@ -136,6 +196,9 @@ def index():
 
 @app.route("/export", methods=["POST"])
 def export_variables():
+    """
+    Export the current variables_list to a JSON file in the exports folder.
+    """
     filename = request.form.get("filename", "variables.json")
     filepath = os.path.join(app.config['EXPORT_FOLDER'], secure_filename(filename))
     with open(filepath, "w") as f:
@@ -145,16 +208,20 @@ def export_variables():
 
 @app.route("/import", methods=["POST"])
 def import_variables():
+    """
+    Import variables from a JSON file uploaded by the user.
+    """
     if "file" not in request.files:
         flash("No file selected for importing.", "error")
         return redirect(url_for("index"))
 
     file = request.files["file"]
-    if file.filename == "":
+    filename = file.filename or ""
+    if filename == "":
         flash("No file selected for importing.", "error")
         return redirect(url_for("index"))
 
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
     file.save(filepath)
 
     global variables_list
@@ -170,7 +237,9 @@ def import_variables():
 
 @app.route("/download", methods=["POST"])
 def download_variables():
-    """Export variables as a downloadable JSON file with a specified filename."""
+    """
+    Export variables as a downloadable JSON file with a specified filename.
+    """
     filename = request.form.get("filename", "variables.json").strip()  # Get filename from form input
     if not filename.endswith(".json"):
         filename += ".json"  # Ensure the filename has a .json extension

@@ -34,7 +34,7 @@ def investmentHandler(current_productivity, current_savings, percentage):
     return (newProductivity, newSavings)
 
 class Node:
-    def __init__(self, parent, nodeName, month = 0, productivity = 0,savings = 0, percentage = None):
+    def __init__(self, parent, nodeName, month = 0, productivity: float = 0.0, savings: float = 0.0, percentage = None):
         self.parent = parent
         self.nodeName = nodeName
 

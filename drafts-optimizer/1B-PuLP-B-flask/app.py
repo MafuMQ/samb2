@@ -1,167 +1,87 @@
 """
 1B-PuLP-B-flask/app.py
 
-A Flask web application for defining and solving integer linear programming problems (e.g., maximizing profit for cake production under a budget constraint).
+Flask web application for managing and solving integer linear programming (ILP) problems.
+Provides a user interface for defining variables, setting constraints, and running optimizations.
 
 Features:
-- Add, import, export, and download optimization variables (e.g., cakes).
-- Set a budget constraint and maximize profit using PuLP.
-- Web interface for user interaction.
-
-Classes:
-    IntegerVariable: Represents a variable in the optimization problem.
-
-Functions:
-    create_integer_variable: Helper to create and store IntegerVariable instances.
-    optimize: Sets up and solves the optimization problem using PuLP.
-    Flask routes: index, export_variables, import_variables, download_variables.
+- Add, import, export, and download optimization variables.
+- Set budget constraints and maximize profit.
+- Clean separation of concerns (web UI, optimization logic, configuration).
 
 @author: Mafu
-@date: 2024-10-11
+@date: 2025-06-14
 """
 
 import os
 import json
 import threading
 import time
+import webbrowser
+from typing import Tuple, Dict, Any, Optional
 from flask import Flask, render_template, request, flash, redirect, url_for, send_file
 from werkzeug.utils import secure_filename
-from pulp import LpProblem, LpVariable, LpMaximize, lpSum, PULP_CBC_CMD
-import webbrowser
+from optimizer_core import (
+    IntegerVariable, create_integer_variable, optimize, variables_list,
+    clear_variables, OptimizationError
+)
+from config import Config
 
-app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+def create_app(config_class=Config) -> Flask:
+    """Create and configure the Flask application."""
+    app = Flask(__name__)
+    app.config.from_object(config_class)
+    config_class.init_app(app)
+    
+    return app
 
-UPLOAD_FOLDER = 'uploads'
-EXPORT_FOLDER = 'exports'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(EXPORT_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['EXPORT_FOLDER'] = EXPORT_FOLDER
+app = create_app()
+budget = Config.DEFAULT_BUDGET
 
-budget = 97
-# List to store the IntegerVariable instances
-variables_list = []
+def safe_filename(filename: str) -> str:
+    """Generate a secure filename and ensure .json extension."""
+    filename = secure_filename(filename)
+    if not filename.endswith('.json'):
+        filename += '.json'
+    return filename
 
-# IntegerVariable class
-class IntegerVariable:
-    """
-    Represents an integer (or continuous) variable for optimization.
+def handle_file_operation(operation: str, filepath: str, variables: Optional[list] = None) -> None:
+    """Handle file operations with error checking."""
+    try:
+        if operation == 'save':
+            with open(filepath, 'w') as f:
+                json.dump([var.to_dict() for var in variables or variables_list], f, indent=4)
+        elif operation == 'load':
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+                clear_variables()
+                for item in data:
+                    var = IntegerVariable.from_dict(item)
+                    var.validate()
+                    variables_list.append(var)
+    except Exception as e:
+        raise IOError(f"Error {operation}ing variables: {str(e)}")
 
-    Attributes:
-        name (str): Name of the variable.
-        lowerBound (int): Minimum value.
-        upperBound (int or None): Maximum value (None for unbounded above).
-        profit (float): Profit per unit.
-        integer (bool): Whether the variable is integer (default True).
-        multiplier (int): Multiplier for scaling (e.g., batch size).
-    """
-    def __init__(self, name: str, lowerBound: int = 0, upperBound: int | None = None, profit: float = 0.0, integer: bool = True, multiplier: int = 1):
-        self.name = name
-        self.lowerBound = lowerBound
-        self.upperBound = upperBound
-        self.profit = profit
-        self.integer = integer
-        self.multiplier = multiplier
-
-    def __repr__(self):
-        return (f"IntegerVariable(name={self.name}, lowerBound={self.lowerBound}, "
-                f"upperBound={self.upperBound}, profit={self.profit}, integer={self.integer}, "
-                f"multiplier={self.multiplier})")
-
-    def to_dict(self):
-        """Convert to a dictionary for JSON export."""
-        return {
-            "name": self.name,
-            "lowerBound": self.lowerBound,
-            "upperBound": self.upperBound,
-            "profit": self.profit,
-            "integer": self.integer,
-            "multiplier": self.multiplier,
+def parse_variable_form() -> Tuple[Dict[str, Any], bool]:
+    """Parse and validate variable form data."""
+    try:
+        data = {
+            'name': request.form['name'],
+            'lowerBound': int(request.form['lowerBound']) if request.form['lowerBound'] else 0,
+            'upperBound': int(request.form['upperBound']) if request.form['upperBound'] else None,
+            'profit': float(request.form['profit']),
+            'integer': bool(request.form.get('integer')),
+            'multiplier': int(request.form['multiplier'])
         }
-
-    @staticmethod
-    def from_dict(data):
-        """Create an IntegerVariable from a dictionary."""
-        return IntegerVariable(
-            name=data["name"],
-            lowerBound=data["lowerBound"],
-            upperBound=data["upperBound"],
-            profit=data["profit"],
-            integer=data["integer"],
-            multiplier=data["multiplier"],
-        )
-
-# Function to create an IntegerVariable instance and add it to the list
-
-def create_integer_variable(name: str, lowerBound: int, upperBound: int | None, profit: float, integer: bool = True, multiplier: int = 1):
-    """
-    Create an IntegerVariable and add it to the global variables_list.
-
-    Args:
-        name (str): Name of the variable.
-        lowerBound (int): Minimum value.
-        upperBound (int or None): Maximum value.
-        profit (float): Profit per unit.
-        integer (bool): Whether variable is integer.
-        multiplier (int): Multiplier for scaling.
-    """
-    var = IntegerVariable(name=name, lowerBound=lowerBound, upperBound=upperBound, profit=profit, integer=integer, multiplier=multiplier)
-    variables_list.append(var)
-
-# Optimize function to process variables in the list
-
-def optimize(variables):
-    """
-    Set up and solve the integer programming problem to maximize profit.
-
-    Args:
-        variables (list[IntegerVariable]): List of variables to optimize.
-    Returns:
-        max_profit (float): The maximum profit achieved.
-        result (dict): Dictionary of variable names and their optimal scaled values.
-    """
-    model = LpProblem("Cake_Production", LpMaximize)
-    lp_vars = {}
-
-    # Create PuLP variables for each IntegerVariable
-    for var in variables:
-        lp_vars[var.name] = LpVariable(var.name, lowBound=var.lowerBound, upBound=var.upperBound, cat='Integer' if var.integer else 'Continuous')
-    
-    # Constraints of available pounds sterlings (GBP) with multiplier applied
-    sumOfAllVariables = lpSum([var.multiplier * lp_vars[var.name] for var in variables])
-    model += (sumOfAllVariables <= budget, "Budget_Constraint")  # Budget limit
-    
-    # Define the objective (maximize profit)
-    total_profit = lpSum([var.profit * var.multiplier * lp_vars[var.name] for var in variables])
-    model += total_profit, "Total_Profit"
-    
-    # Solve the optimization problem
-    solver = PULP_CBC_CMD(msg=False)
-    model.solve(solver)
-    
-    # Gather results
-    max_profit = 0
-    result = {}
-    for var in variables:
-        optimal_value = lp_vars[var.name].varValue
-        if optimal_value is None:
-            optimal_value = 0
-        else:
-            optimal_value = int(optimal_value)
-        scaled_value = optimal_value * var.multiplier
-        result[var.name] = scaled_value
-        max_profit += var.profit * scaled_value
-
-    return max_profit, result
+        return data, True
+    except ValueError as e:
+        flash(f"Invalid input: {str(e)}", "error")
+        return {}, False
 
 # Routes
 @app.route("/", methods=["GET", "POST"])
 def index():
-    """
-    Main page for adding variables, updating budget, and running optimization.
-    Handles form submissions for all main actions.
-    """
+    """Handle main page and form submissions."""
     global budget
     max_profit = None
     result = {}
@@ -169,93 +89,149 @@ def index():
     if request.method == "POST":
         if "update_budget" in request.form:
             try:
-                budget = int(request.form["budget"])
+                new_budget = int(request.form["budget"])
+                if new_budget <= 0:
+                    raise ValueError("Budget must be positive")
+                budget = new_budget
                 flash("Budget updated successfully!", "success")
-            except ValueError:
-                flash("Invalid budget value. Please enter a valid number.", "error")
+            except ValueError as e:
+                flash(f"Invalid budget value: {str(e)}", "error")
         
         elif "add_variable" in request.form:
-            name = request.form["name"]
-            lower_bound = int(request.form["lower_bound"]) if request.form["lower_bound"] else 0
-            upper_bound = int(request.form["upper_bound"]) if request.form["upper_bound"] else None
-            profit = float(request.form["profit"])
-            integer = bool(request.form.get("integer"))
-            multiplier = int(request.form["multiplier"])
-            
-            create_integer_variable(name, lower_bound, upper_bound, profit, integer, multiplier)
-            flash("Variable added successfully!", "success")
+            data, valid = parse_variable_form()
+            if valid:
+                try:
+                    create_integer_variable(**data)
+                    flash("Variable added successfully!", "success")
+                except OptimizationError as e:
+                    flash(str(e), "error")
         
         elif "optimize" in request.form:
-            if variables_list:
-                max_profit, result = optimize(variables_list)
-            else:
+            if not variables_list:
                 flash("No variables to optimize. Add variables first.", "error")
+            else:
+                try:
+                    max_profit, result = optimize(variables_list, budget)
+                    flash("Optimization completed successfully!", "success")
+                except OptimizationError as e:
+                    flash(f"Optimization failed: {str(e)}", "error")
 
-    return render_template("index.html", variables=variables_list, max_profit=max_profit, result=result, budget=budget)
-
+    return render_template("index.html",
+                         variables=variables_list,
+                         max_profit=max_profit,
+                         result=result,
+                         budget=budget)
 
 @app.route("/export", methods=["POST"])
 def export_variables():
-    """
-    Export the current variables_list to a JSON file in the exports folder.
-    """
-    filename = request.form.get("filename", "variables.json")
-    filepath = os.path.join(app.config['EXPORT_FOLDER'], secure_filename(filename))
-    with open(filepath, "w") as f:
-        json.dump([var.to_dict() for var in variables_list], f, indent=4)
-    flash(f"Variables exported to {filepath}!", "success")
+    """Export variables to a JSON file in the exports folder."""
+    try:
+        filename = safe_filename(request.form.get("filename", "variables.json"))
+        filepath = os.path.join(app.config['EXPORT_FOLDER'], filename)
+        handle_file_operation('save', filepath)
+        flash(f"Variables exported successfully!", "success")
+    except Exception as e:
+        flash(f"Export failed: {str(e)}", "error")
     return redirect(url_for("index"))
 
 @app.route("/import", methods=["POST"])
 def import_variables():
-    """
-    Import variables from a JSON file uploaded by the user.
-    """
+    """Import variables from an uploaded JSON file."""
     if "file" not in request.files:
         flash("No file selected for importing.", "error")
         return redirect(url_for("index"))
 
     file = request.files["file"]
-    filename = file.filename or ""
-    if filename == "":
+    if not file.filename:
         flash("No file selected for importing.", "error")
         return redirect(url_for("index"))
 
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
-    file.save(filepath)
-
-    global variables_list
     try:
-        with open(filepath, "r") as f:
-            data = json.load(f)
-            variables_list = [IntegerVariable.from_dict(item) for item in data]
-        flash(f"Variables imported from {file.filename}!", "success")
+        filename = safe_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        handle_file_operation('load', filepath)
+        flash("Variables imported successfully!", "success")
     except Exception as e:
-        flash(f"Error importing variables: {e}", "error")
-
+        flash(f"Import failed: {str(e)}", "error")
+    
     return redirect(url_for("index"))
 
 @app.route("/download", methods=["POST"])
 def download_variables():
-    """
-    Export variables as a downloadable JSON file with a specified filename.
-    """
-    filename = request.form.get("filename", "variables.json").strip()  # Get filename from form input
-    if not filename.endswith(".json"):
-        filename += ".json"  # Ensure the filename has a .json extension
+    """Download variables as a JSON file."""
+    try:
+        filename = safe_filename(request.form.get("filename", "variables.json").strip())
+        filepath = os.path.join(app.config['EXPORT_FOLDER'], filename)
+        handle_file_operation('save', filepath)
+        return send_file(filepath, as_attachment=True, download_name=filename)
+    except Exception as e:
+        flash(f"Download failed: {str(e)}", "error")
+        return redirect(url_for("index"))
 
-    filepath = os.path.join(app.config['EXPORT_FOLDER'], secure_filename(filename))
-    with open(filepath, "w") as f:
-        json.dump([var.to_dict() for var in variables_list], f, indent=4)
+@app.route("/delete_variable/<name>", methods=["POST"])
+def delete_variable(name):
+    """Delete a variable by its name."""
+    global variables_list
+    try:
+        # Find and remove the variable with the given name
+        variables_list = [var for var in variables_list if var.name != name]
+        flash(f"Variable '{name}' deleted successfully!", "success")
+    except Exception as e:
+        flash(f"Error deleting variable: {str(e)}", "error")
+    
+    return redirect(url_for("index"))
 
-    flash(f"Variables saved as {filename}!", "success")
-    return send_file(filepath, as_attachment=True, download_name=filename)
+@app.route("/update_variable", methods=["POST"])
+def update_variable():
+    """Update an existing variable."""
+    global variables_list
+    try:
+        old_name = request.form.get('old_name')
+        if not old_name:
+            return {'status': 'error', 'message': 'Original variable name is required'}, 400
 
-if __name__ == "__main__":
-    url = "http://localhost:5000"
+        # Find the variable we're updating
+        old_var = next((var for var in variables_list if var.name == old_name), None)
+        if not old_var:
+            return {'status': 'error', 'message': f'Variable {old_name} not found'}, 404
+
+        data, valid = parse_variable_form()
+        if not valid:
+            return {'status': 'error', 'message': 'Invalid input data'}, 400
+
+        # If we're not changing the name, or if the new name is available
+        if data['name'] == old_name or not any(var.name == data['name'] for var in variables_list if var.name != old_name):
+            # Create new variable instance to validate before removing old one
+            new_var = IntegerVariable(**data)
+            new_var.validate()
+            
+            # Remove the old variable first
+            variables_list = [var for var in variables_list if var.name != old_name]
+            # Add the new variable
+            variables_list.append(new_var)
+            flash("Variable updated successfully!", "success")
+            return {'status': 'success'}, 200
+        else:
+            return {'status': 'error', 'message': f'A variable named {data["name"]} already exists'}, 400
+        
+    except ValueError as e:
+        return {'status': 'error', 'message': f'Invalid value: {str(e)}'}, 400
+    except Exception as e:
+        flash(f"Error updating variable: {str(e)}", "error")
+        return {'status': 'error', 'message': str(e)}, 500
+
+def run_app(port: int = 5000, debug: bool = True):
+    """Run the Flask application with browser auto-open."""
+    url = f"http://localhost:{port}"
     def open_browser():
         time.sleep(1)
         webbrowser.open(url)
+    
+    if not debug:
+        threading.Thread(target=open_browser).start()
+    
+    app.run(debug=debug, use_reloader=False, port=port)
 
-    threading.Thread(target=open_browser).start()
-    app.run(debug=True, use_reloader=False) #prevents opening 2 tabs on start, disables automatic refreshing/restarting when changes are made to code
+if __name__ == "__main__":
+    run_app()
